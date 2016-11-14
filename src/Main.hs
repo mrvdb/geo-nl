@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Main where
 
 -- A demo program to convers ETRS89 coordinates to RD coordinates
@@ -12,7 +13,12 @@ module Main where
 
 import Text.Printf (printf)
 import Control.Lens ((#), (^.))
-    
+import Options.Applicative
+import Data.Version (showVersion)
+import Development.GitRev (gitHash)
+import Paths_geo_nl (version)
+import Data.Monoid ((<>))
+   
 -- The coordinate package has lots of useful stuff for us
 import Data.Geodetic.LL
 import Data.Geodetic.XY 
@@ -23,9 +29,8 @@ import Data.Radian (toRadians)
 ll2rd :: HasLL s => s -> XY
 ll2rd ll = XY rdx rdy where
     -- Constants needed for calculation
-    a, e, m, n, k, r :: Double
-    a = 6377397.155          -- major axis of bessel ellips
-    e = 0.081696831222       -- excentricity
+    e, m, n, k, r :: Double
+    e = 0.081696831222       -- excentricity of bessel ellips
     m = 0.003773953832       -- correction factors for gauss projection
     n = 1.00047585668        -- 
     k = 0.9999079            -- scaling factor for projection
@@ -38,17 +43,16 @@ ll2rd ll = XY rdx rdy where
     -- which prove to be useful in practice:
     -- - X and Y will always be positive in the 'valid RD area'
     -- - min (Y) > max(X) :: it will always be clear which coordinate is which
-    rd0 :: XY; x0, y0, b0, l0 :: Double
+    rd0 :: XY; x0, y0, b0 :: Double
     rd0 = XY 155000.0 463000.0    -- RD coordinates of the datumpoint
     x0 = rd0 ^. x; y0 = rd0 ^. y  -- 
     b0 = toRadians # 52.121097249 -- width and length on the sphere
-    l0 = toRadians # 5.387638889  --
 
     -- RD datumpoint in latlon coord
     ll0 :: LL
-    φ0, λ0, φ, λ :: Double
+    φ, λ, λ0 :: Double
     ll0 = LL 52.156160556 5.387638889
-    φ0 = toRadians # (ll0 ^. lat) ; λ0 = toRadians # (ll0 ^. lon)
+    λ0 = toRadians # (ll0 ^. lon)
 
     -- Transform input so we can use it
     φ = toRadians # (ll ^. lat) -- latitude in radians 
@@ -56,22 +60,69 @@ ll2rd ll = XY rdx rdy where
 
     -- Derived values
     q, w, b, dl, d :: Double
-    q = atanh(sin(φ)) -
-        (e * atanh(e * sin(φ)))    -- isometric distance on ellipsoid
-    w = n*q + m                    -- isometric width on sphere
+    q = atanh(sin φ) -
+        (e * atanh(e * sin φ))    -- isometric distance on ellipsoid
+    w = n*q + m                   -- isometric width on sphere
     
-    b = 2*atan((exp w)) - pi/2      -- width and length on sphere
-    dl = n * (λ -λ0)               -- 
+    b = 2*atan(exp w) - pi/2      -- width and length on sphere
+    dl = n * (λ -λ0)             -- 
       
     -- Finally, calculate the RD x and y components
-    d = 1+sin(b)*sin(b0)+cos(b)*cos(b0)*cos(dl)
-    rdx = 2 * k * r * ((sin(dl)*cos(b))/d) + x0
-    rdy = 2 * k * r * ((sin(b)*cos(b0)-cos(b)*sin(b0)*cos(dl))/d) + y0
+    d = 1 + sin b * sin b0 + cos b * cos b0 * cos dl
+    rdx = 2 * k * r * ((sin dl * cos b) / d) + x0
+    rdy = 2 * k * r * ((sin b * cos b0 - cos b * sin b0 * cos dl) / d) + y0
     
+
+-- Program info
+programInfo :: InfoMod a
+programInfo = fullDesc
+              <> progDesc "program description"
+              <> header "first line of help output?"
+
+-- Use builtin helper option
+helpOption :: Parser (a -> a)
+helpOption = helper
+             
+-- Support a version option, incl. githash
+versionOption :: Parser (a -> a)
+versionOption = infoOption
+                (concat [showVersion version, " ", $(gitHash)])
+                (long "version"
+                <> short 'v' -- Char!!
+                <> help "Show version")
+-- latitude and longitude are required arguments
+latArgument :: Parser Double
+latArgument = argument auto
+              (metavar "LAT"
+              <> help "Latitude in decimal notation")
+lonArgument :: Parser Double
+lonArgument = argument auto
+              (metavar "LON"
+              <> help "Longitude in decimal notation")
+
+-- Define type to store arguments and make sure we can show it
+data Options = Options
+    { clat     :: Double
+    , clon     :: Double
+    , cquiet   :: Bool} deriving Show
+
+options :: Parser Options
+options = Options 
+          <$> latArgument
+          <*> lonArgument
+          <*> switch
+              ( long "quiet"
+              <> short 'q'
+              <> help "Only show result, no text dressing" )
+
 
 main :: IO ()
 main = do
-  let ll  = LL 51.6439 4.4376
-  let ll2 = LL 53 6
-  let rd = ll2rd ll
-  printf "RD-coordinaten: %f / %f \n" (rd ^. x) (rd ^. y)
+  s <- execParser opts
+  let rd = ll2rd ( LL (clat s) (clon s))
+  printf "RD-coordinaten: %.2f / %.2f \n" (rd ^. x) (rd ^. y)
+  where
+    opts = info (helpOption
+                 <*> versionOption
+                 <*> options)
+           programInfo

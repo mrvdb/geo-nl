@@ -20,4 +20,5 @@ executable geo-nl
                      , coordinate
                      , radian
                      , lens
-                  
+                     , optparse-applicative
+                     , gitrev
