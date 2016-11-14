@@ -16,13 +16,14 @@ import Control.Lens ((#), (^.))
 -- The coordinate package has lots of useful stuff for us
 import Data.Geodetic.LL
 import Data.Geodetic.XY 
-import Data.Radian
+import Data.Radian (toRadians)
     
--- Inputs (to be read at runtime later)
+-- Convert ll coordinates to pseudo-rd coordinates
+-- pseudo, because we don't apply the correction grid
 ll2rd :: HasLL s => s -> XY
 ll2rd ll = XY rdx rdy where
     -- Constants needed for calculation
-    a, e, φ, q, n, m, w, b, r, dl :: Double
+    a, e, m, n, k, r :: Double
     a = 6377397.155          -- major axis of bessel ellips
     e = 0.081696831222       -- excentricity
     m = 0.003773953832       -- correction factors for gauss projection
@@ -32,18 +33,21 @@ ll2rd ll = XY rdx rdy where
 
     -- Definition of the datumpoint for the RD system
     -- The datumpoint of the RD coordinate system lies in Amersfoort and
-    -- is assigned 'smart' offset of X=155000 and Y=463000 with the unit
+    -- is assigned a 'smart' offset of X=155000 and Y=463000 with the unit
     -- 'meters'. The choice of these values have the following reasons,
     -- which prove to be useful in practice:
     -- - X and Y will always be positive in the 'valid RD area'
     -- - min (Y) > max(X) :: it will always be clear which coordinate is which
+    rd0 :: XY; x0, y0, b0, l0 :: Double
     rd0 = XY 155000.0 463000.0    -- RD coordinates of the datumpoint
     x0 = rd0 ^. x; y0 = rd0 ^. y  -- 
     b0 = toRadians # 52.121097249 -- width and length on the sphere
     l0 = toRadians # 5.387638889  --
 
     -- RD datumpoint in latlon coord
-    ll0 = LL (52.0 + 9.0/60 + 22.178/3600) (5.0 + 23.0/60 + 15.5/3600)
+    ll0 :: LL
+    φ0, λ0, φ, λ :: Double
+    ll0 = LL 52.156160556 5.387638889
     φ0 = toRadians # (ll0 ^. lat) ; λ0 = toRadians # (ll0 ^. lon)
 
     -- Transform input so we can use it
@@ -51,6 +55,7 @@ ll2rd ll = XY rdx rdy where
     λ = toRadians # (ll ^. lon) -- longitude in radians
 
     -- Derived values
+    q, w, b, dl, d :: Double
     q = atanh(sin(φ)) -
         (e * atanh(e * sin(φ)))    -- isometric distance on ellipsoid
     w = n*q + m                    -- isometric width on sphere
@@ -58,8 +63,6 @@ ll2rd ll = XY rdx rdy where
     b = 2*atan((exp w)) - pi/2      -- width and length on sphere
     dl = n * (λ -λ0)               -- 
       
-    
-
     -- Finally, calculate the RD x and y components
     d = 1+sin(b)*sin(b0)+cos(b)*cos(b0)*cos(dl)
     rdx = 2 * k * r * ((sin(dl)*cos(b))/d) + x0
