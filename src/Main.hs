@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
 module Main where
 
 -- A demo program to convers ETRS89 coordinates to RD coordinates
@@ -14,15 +13,14 @@ module Main where
 import Text.Printf (printf)
 import Control.Lens ((#), (^.))
 import Options.Applicative
-import Data.Version (showVersion)
-import Development.GitRev (gitHash)
-import Paths_geo_nl (version)
-import Data.Monoid ((<>))
-   
+
 -- The coordinate package has lots of useful stuff for us
 import Data.Geodetic.LL
 import Data.Geodetic.XY 
 import Data.Radian (toRadians)
+
+-- Process commandline options for geo-nl
+import Options
     
 -- Convert ll coordinates to pseudo-rd coordinates
 -- pseudo, because we don't apply the correction grid
@@ -72,50 +70,7 @@ ll2rd ll = XY rdx rdy where
     rdx = 2 * k * r * ((sin dl * cos b) / d) + x0
     rdy = 2 * k * r * ((sin b * cos b0 - cos b * sin b0 * cos dl) / d) + y0
     
-
--- Program info
-programInfo :: InfoMod a
-programInfo = fullDesc
-              <> progDesc "program description"
-              <> header "first line of help output?"
-
--- Use builtin helper option
-helpOption :: Parser (a -> a)
-helpOption = helper
-             
--- Support a version option, incl. githash
-versionOption :: Parser (a -> a)
-versionOption = infoOption
-                (concat [showVersion version, " ", $(gitHash)])
-                (long "version"
-                <> short 'v' -- Char!!
-                <> help "Show version")
--- latitude and longitude are required arguments
-latArgument :: Parser Double
-latArgument = argument auto
-              (metavar "LAT"
-              <> help "Latitude in decimal notation")
-lonArgument :: Parser Double
-lonArgument = argument auto
-              (metavar "LON"
-              <> help "Longitude in decimal notation")
-
--- Define type to store arguments and make sure we can show it
-data Options = Options
-    { clat     :: Double
-    , clon     :: Double
-    , cquiet   :: Bool} deriving Show
-
-options :: Parser Options
-options = Options 
-          <$> latArgument
-          <*> lonArgument
-          <*> switch
-              ( long "quiet"
-              <> short 'q'
-              <> help "Only show result, no text dressing" )
-
-
+-- Entry point
 main :: IO ()
 main = do
   s <- execParser opts

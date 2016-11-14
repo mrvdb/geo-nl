@@ -22,3 +22,4 @@ executable geo-nl
                      , lens
                      , optparse-applicative
                      , gitrev
+  other-modules:       Options
